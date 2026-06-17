@@ -227,7 +227,7 @@ echo "User data script completed successfully" >> /home/ubuntu/setup-info.txt
 instance = aws.ec2.Instance("mlops-instance",
     key_name=key.key_name,  # Use the created key pair
     instance_type="t2.micro",  # Changed to t2.micro for free tier/sandbox
-    ami="ami-0df7a207adb9748c7",  # Ubuntu 22.04 LTS in ap-southeast-1
+    ami="ami-0532913178263be11",  # Ubuntu 22.04 LTS in ap-southeast-1
     subnet_id=public_subnet.id,
     vpc_security_group_ids=[security_group.id],
     user_data=user_data,
