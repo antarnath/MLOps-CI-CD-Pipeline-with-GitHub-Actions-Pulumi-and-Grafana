@@ -12,6 +12,8 @@ stack_name = pulumi.get_stack()
 config = Config()
 region = "ap-southeast-1"
 manage_ecr_repositories = config.get_bool("manageEcrRepositories")
+if manage_ecr_repositories is None:
+    manage_ecr_repositories = True
 
 # Create key pair from your existing public key
 key = aws.ec2.KeyPair("mlops-key",
@@ -138,19 +140,7 @@ security_group = aws.ec2.SecurityGroup("mlops-sg",
 ml_inference_repo_name = f"mlops/ml-inference-{unique_suffix}"
 data_ingestion_repo_name = f"mlops/data-ingestion-{unique_suffix}"
 
-caller_identity = aws.get_caller_identity()
-ml_inference_repo_url = Output.concat(
-    caller_identity.account_id,
-    f".dkr.ecr.{region}.amazonaws.com/",
-    ml_inference_repo_name,
-)
-data_ingestion_repo_url = Output.concat(
-    caller_identity.account_id,
-    f".dkr.ecr.{region}.amazonaws.com/",
-    data_ingestion_repo_name,
-)
-
-if manage_ecr_repositories is not False:
+if manage_ecr_repositories:
     # Create ECR repositories with unique names and force delete
     ml_inference_repo = aws.ecr.Repository("ml-inference-repo",
         name=ml_inference_repo_name,
@@ -180,6 +170,15 @@ if manage_ecr_repositories is not False:
 
     ml_inference_repo_url = ml_inference_repo.repository_url
     data_ingestion_repo_url = data_ingestion_repo.repository_url
+else:
+    # Repositories are expected to be pre-created; downstream image push/pull steps fail if missing.
+    caller_identity = aws.get_caller_identity()
+    ml_inference_repo_url = Output.from_input(
+        f"{caller_identity.account_id}.dkr.ecr.{region}.amazonaws.com/{ml_inference_repo_name}"
+    )
+    data_ingestion_repo_url = Output.from_input(
+        f"{caller_identity.account_id}.dkr.ecr.{region}.amazonaws.com/{data_ingestion_repo_name}"
+    )
 
 # Enhanced user data script (optimized for t2.micro)
 user_data = f"""#!/bin/bash
