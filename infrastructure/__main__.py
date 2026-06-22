@@ -11,6 +11,7 @@ stack_name = pulumi.get_stack()
 # Get configuration
 config = Config()
 region = "ap-southeast-1"
+manage_ecr_repositories = config.get_bool("manageEcrRepositories")
 
 # Create key pair from your existing public key
 key = aws.ec2.KeyPair("mlops-key",
@@ -134,32 +135,51 @@ security_group = aws.ec2.SecurityGroup("mlops-sg",
     }
 )
 
-# Create ECR repositories with unique names and force delete
-ml_inference_repo = aws.ecr.Repository("ml-inference-repo",
-    name=f"mlops/ml-inference-{unique_suffix}",
-    image_tag_mutability="MUTABLE",
-    force_delete=True,  # This allows deletion even with images
-    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-        scan_on_push=True,
-    ),
-    tags={
-        "Name": f"ml-inference-repo-{stack_name}",
-        "Project": f"mlops-pipeline-{stack_name}"
-    }
+ml_inference_repo_name = f"mlops/ml-inference-{unique_suffix}"
+data_ingestion_repo_name = f"mlops/data-ingestion-{unique_suffix}"
+
+caller_identity = aws.get_caller_identity()
+ml_inference_repo_url = Output.concat(
+    caller_identity.account_id,
+    f".dkr.ecr.{region}.amazonaws.com/",
+    ml_inference_repo_name,
+)
+data_ingestion_repo_url = Output.concat(
+    caller_identity.account_id,
+    f".dkr.ecr.{region}.amazonaws.com/",
+    data_ingestion_repo_name,
 )
 
-data_ingestion_repo = aws.ecr.Repository("data-ingestion-repo",
-    name=f"mlops/data-ingestion-{unique_suffix}",
-    image_tag_mutability="MUTABLE",
-    force_delete=True,  # This allows deletion even with images
-    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-        scan_on_push=True,
-    ),
-    tags={
-        "Name": f"data-ingestion-repo-{stack_name}",
-        "Project": f"mlops-pipeline-{stack_name}"
-    }
-)
+if manage_ecr_repositories is not False:
+    # Create ECR repositories with unique names and force delete
+    ml_inference_repo = aws.ecr.Repository("ml-inference-repo",
+        name=ml_inference_repo_name,
+        image_tag_mutability="MUTABLE",
+        force_delete=True,  # This allows deletion even with images
+        image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+            scan_on_push=True,
+        ),
+        tags={
+            "Name": f"ml-inference-repo-{stack_name}",
+            "Project": f"mlops-pipeline-{stack_name}"
+        }
+    )
+
+    data_ingestion_repo = aws.ecr.Repository("data-ingestion-repo",
+        name=data_ingestion_repo_name,
+        image_tag_mutability="MUTABLE",
+        force_delete=True,  # This allows deletion even with images
+        image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+            scan_on_push=True,
+        ),
+        tags={
+            "Name": f"data-ingestion-repo-{stack_name}",
+            "Project": f"mlops-pipeline-{stack_name}"
+        }
+    )
+
+    ml_inference_repo_url = ml_inference_repo.repository_url
+    data_ingestion_repo_url = data_ingestion_repo.repository_url
 
 # Enhanced user data script (optimized for t2.micro)
 user_data = f"""#!/bin/bash
@@ -258,8 +278,8 @@ pulumi.export("subnet_id", public_subnet.id)
 pulumi.export("security_group_id", security_group.id)
 pulumi.export("instance_id", instance.id)
 pulumi.export("instance_public_ip", elastic_ip.public_ip)
-pulumi.export("ml_inference_repo_url", ml_inference_repo.repository_url)
-pulumi.export("data_ingestion_repo_url", data_ingestion_repo.repository_url)
+pulumi.export("ml_inference_repo_url", ml_inference_repo_url)
+pulumi.export("data_ingestion_repo_url", data_ingestion_repo_url)
 pulumi.export("grafana_url", Output.concat("http://", elastic_ip.public_ip, ":3000"))
 pulumi.export("prometheus_url", Output.concat("http://", elastic_ip.public_ip, ":9090"))
 pulumi.export("unique_suffix", unique_suffix)
